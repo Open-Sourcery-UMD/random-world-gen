@@ -21,9 +21,6 @@ function Settings() {
 export function VerifiedMenuItems() {
     return (
         <>
-            <Link className="block rounded px-3 py-2 hover:bg-slate-100" to="/dashboard">
-                Dashboard
-            </Link>
             <Settings />
             <Logout />
         </>

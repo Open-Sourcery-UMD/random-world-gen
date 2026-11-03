@@ -10,6 +10,8 @@ import { Dashboard } from "@/pages/dashboard";
 import { VerifyEmail } from "@/pages/verify-email";
 import { Settings } from "@/pages/settings";
 import { CreateProject } from "@/pages/create-project";
+import { EditProject } from "@/pages/edit-project";
+import { GenerationSettings } from "@/pages/gen-settings";
 import { useEffect, useState } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { VerifiedMenuItems, UnverifiedMenuItems, VerifyEmailItems } from "@/components/menu-items";
@@ -75,6 +77,14 @@ function App() {
               </Link>
 
               <div className="flex items-center gap-3">
+                {emailVerified && (
+                  <Link
+                    to="/dashboard"
+                    className="inline-flex h-9 w-max items-center justify-center rounded-lg px-2.5 py-1.5 text-sm font-medium transition-all outline-none hover:bg-white/10 focus:bg-white/10 focus-visible:ring-3 focus-visible:ring-white/50"
+                  >
+                    Dashboard
+                  </Link>
+                )}
                 <NavigationMenu>
                   <NavigationMenuList>
                     <NavigationMenuItem>
@@ -109,6 +119,8 @@ function App() {
                 <CreateProject />
               </RequireVerifiedUser>
             } />
+            <Route path="/edit" element={<EditProject user={user} authLoading={authLoading} />} />
+            <Route path="/gen-settings" element={<GenerationSettings user={user} authLoading={authLoading} />} />
           </Routes>
         </Router> 
     </AppProviders>
