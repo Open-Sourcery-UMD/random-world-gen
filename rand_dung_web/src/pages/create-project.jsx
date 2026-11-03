@@ -40,7 +40,8 @@ export function CreateProject() {
 
         setDoc(docRef, {
             title: name,
-            description: description
+            description: description,
+            "gen-type": "none",
         }).then(() => {
             navigate("/dashboard");
         })
