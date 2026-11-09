@@ -46,27 +46,23 @@ local function rand_walk_generate(width, height, max_tunnels, max_length)
             dy = (direction == 3) and 1 or -1
         end
 
-        local length = find_max_bounds(x, y, dx, dy, width, height, max_length)
+        local max_available_length = find_max_bounds(x, y, dx, dy, width, height, max_length)
 
-        local len = 0
+        if max_available_length > 0 then
+            local length = math.random(max_available_length)
+            local len = 0
 
-        for i = 1, length do
-            if (x >= 1 and x <= width and y >= 1 and y <= height) then
+            for i = 1, length do
                 dungeon[y][x] = 1
                 x = x + dx
                 y = y + dy
                 len = len + 1
-            else
-                break
+            end
+
+            if len ~= 0 then
+                curr_tunnels = curr_tunnels + 1
             end
         end
-
-        if (len ~= 0) then
-            curr_tunnels = curr_tunnels + 1
-        end
-
-        direction = math.random(4)
-        length = math.random(max_length)
     end
 
     return dungeon
