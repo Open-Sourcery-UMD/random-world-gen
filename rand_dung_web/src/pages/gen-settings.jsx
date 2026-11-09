@@ -9,7 +9,7 @@ import { RequireVerifiedUser } from "@/components/require-verified-user";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-const RANDOM_WALK_API_URL = (import.meta.env.VITE_RANDOM_WALK_API_URL ?? "").replace(/\/+$/, "");
+const RANDOM_WALK_API_URL = "https://random-world-gen.onrender.com";
 
 function normalizeGenerationType(value) {
     return typeof value === "string"
@@ -233,14 +233,6 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
 
     async function testRandomWalkAlgorithm() {
         if (!randomWalkSettingsValid || settingsLoadStatus !== "loaded" || algorithmTestLoading) return;
-
-        if (!RANDOM_WALK_API_URL) {
-            setAlgorithmTestState({
-                status: "error",
-                message: "The generator API URL is not configured. Set VITE_RANDOM_WALK_API_URL to your Render service URL.",
-            });
-            return;
-        }
 
         const settings = parseRandomWalkSettings(randomWalkSettings);
         const controller = new AbortController();
