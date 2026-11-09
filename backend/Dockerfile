@@ -3,7 +3,7 @@ FROM node:26-bookworm-slim
 ENV NODE_ENV=production
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends lua5.4 \
+    && apt-get install -y --no-install-recommends lua5.4 lua-dkjson \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
