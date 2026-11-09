@@ -9,7 +9,9 @@ const PORT = Number(process.env.PORT ?? 10000);
 const LUA_SCRIPT = join(__dirname, "random_walk.lua");
 const GENERATION_TIMEOUT_MS = 5_000;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
+const MAX_REQUEST_BYTES = 16 * 1024;
 const MAX_CONCURRENT_GENERATIONS = 2;
+const MAX_SEED = 2_147_483_647;
 const DEFAULT_CORS_ORIGINS = [
     "https://open-sourcery-umd.github.io",
     "http://localhost:5173",
@@ -21,23 +23,7 @@ const ALLOWED_CORS_ORIGINS = new Set(
         .filter(Boolean),
 );
 
-const PARAMETER_LIMITS = {
-    grid_width: { defaultValue: 50, min: 2, max: 200 },
-    grid_height: { defaultValue: 30, min: 2, max: 200 },
-    max_tunnels: { defaultValue: 80, min: 1, max: 500 },
-    max_tunnel_length: { defaultValue: 20, min: 1, max: 200 },
-};
-const ALLOWED_QUERY_PARAMETERS = new Set([...Object.keys(PARAMETER_LIMITS), "seed"]);
-
 let activeGenerations = 0;
-
-class HttpError extends Error {
-    constructor(status, code, message) {
-        super(message);
-        this.status = status;
-        this.code = code;
-    }
-}
 
 function sendJson(response, status, body, extraHeaders = {}) {
     response.writeHead(status, {
@@ -49,6 +35,16 @@ function sendJson(response, status, body, extraHeaders = {}) {
     response.end(JSON.stringify(body));
 }
 
+function sendJsonText(response, status, body, extraHeaders = {}) {
+    response.writeHead(status, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+        ...extraHeaders,
+    });
+    response.end(body);
+}
+
 function applyCors(request, response) {
     response.setHeader("Vary", "Origin");
     const origin = request.headers.origin;
@@ -57,96 +53,78 @@ function applyCors(request, response) {
     if (!ALLOWED_CORS_ORIGINS.has(origin)) return false;
 
     response.setHeader("Access-Control-Allow-Origin", origin);
-    response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     response.setHeader("Access-Control-Allow-Headers", "Accept, Content-Type");
     response.setHeader("Access-Control-Max-Age", "600");
     return true;
 }
 
-function parseIntegerParameter(searchParams, name, limits) {
-    const values = searchParams.getAll(name);
-    if (values.length > 1) {
-        throw new HttpError(400, "invalid_parameter", `${name} must appear only once.`);
+function readRequestBody(request) {
+    const contentType = request.headers["content-type"]
+        ?.split(";")[0]
+        .trim()
+        .toLowerCase();
+
+    if (contentType !== "application/json") {
+        const error = new Error("Send the request body as application/json.");
+        error.status = 415;
+        error.code = "unsupported_media_type";
+        throw error;
     }
 
-    if (values.length === 0) return limits.defaultValue;
-
-    const rawValue = values[0];
-    if (!/^\d+$/.test(rawValue)) {
-        throw new HttpError(400, "invalid_parameter", `${name} must be a whole number.`);
-    }
-
-    const value = Number(rawValue);
-    if (!Number.isSafeInteger(value) || value < limits.min || value > limits.max) {
-        throw new HttpError(
-            400,
-            "invalid_parameter",
-            `${name} must be between ${limits.min} and ${limits.max}.`,
-        );
-    }
-
-    return value;
-}
-
-function parseSettings(searchParams) {
-    for (const name of searchParams.keys()) {
-        if (!ALLOWED_QUERY_PARAMETERS.has(name)) {
-            throw new HttpError(400, "unknown_parameter", `Unknown query parameter: ${name}.`);
-        }
-    }
-
-    const settings = {};
-    for (const [name, limits] of Object.entries(PARAMETER_LIMITS)) {
-        settings[name] = parseIntegerParameter(searchParams, name, limits);
-    }
-
-    const area = settings.grid_width * settings.grid_height;
-    if (area > 40_000) {
-        throw new HttpError(400, "invalid_parameter", "The grid may contain at most 40,000 cells.");
-    }
-
-    const seeds = searchParams.getAll("seed");
-    if (seeds.length > 1) {
-        throw new HttpError(400, "invalid_parameter", "seed must appear only once.");
-    }
-
-    if (seeds.length === 0) {
-        settings.seed = randomInt(0, 2_147_483_648);
-    } else {
-        if (!/^\d+$/.test(seeds[0])) {
-            throw new HttpError(400, "invalid_parameter", "seed must be a whole number.");
-        }
-
-        settings.seed = Number(seeds[0]);
-        if (!Number.isSafeInteger(settings.seed) || settings.seed > 2_147_483_647) {
-            throw new HttpError(400, "invalid_parameter", "seed must be between 0 and 2147483647.");
-        }
-    }
-
-    return settings;
-}
-
-function isGrid(value, width, height) {
-    return Array.isArray(value)
-        && value.length === height
-        && value.every((row) => Array.isArray(row)
-            && row.length === width
-            && row.every((cell) => cell === 0 || cell === 1));
-}
-
-function runLuaGenerator(settings) {
     return new Promise((resolve, reject) => {
-        const argumentsList = [
-            LUA_SCRIPT,
-            String(settings.grid_width),
-            String(settings.grid_height),
-            String(settings.max_tunnels),
-            String(settings.max_tunnel_length),
-            String(settings.seed),
-        ];
-        const child = spawn("lua5.4", argumentsList, {
+        const chunks = [];
+        let byteLength = 0;
+        let tooLarge = false;
+
+        request.on("data", (chunk) => {
+            if (tooLarge) return;
+
+            byteLength += chunk.length;
+            if (byteLength > MAX_REQUEST_BYTES) {
+                tooLarge = true;
+                chunks.length = 0;
+                return;
+            }
+
+            chunks.push(chunk);
+        });
+
+        request.on("end", () => {
+            if (tooLarge) {
+                const error = new Error("The JSON request body is too large.");
+                error.status = 413;
+                error.code = "request_too_large";
+                reject(error);
+                return;
+            }
+            if (byteLength === 0) {
+                const error = new Error("The request body must contain JSON.");
+                error.status = 400;
+                error.code = "invalid_json";
+                reject(error);
+                return;
+            }
+
+            resolve(Buffer.concat(chunks, byteLength));
+        });
+
+        request.on("aborted", () => {
+            const error = new Error("The request was interrupted.");
+            error.status = 400;
+            error.code = "request_aborted";
+            reject(error);
+        });
+        request.on("error", reject);
+    });
+}
+
+function runLuaGenerator(requestBody) {
+    return new Promise((resolve, reject) => {
+        const fallbackSeed = randomInt(0, MAX_SEED + 1);
+        const child = spawn("lua5.4", [LUA_SCRIPT, String(fallbackSeed)], {
             cwd: __dirname,
-            stdio: ["ignore", "pipe", "pipe"],
+            stdio: ["pipe", "pipe", "pipe"],
         });
 
         const stdoutChunks = [];
@@ -161,6 +139,11 @@ function runLuaGenerator(settings) {
             timedOut = true;
             child.kill("SIGKILL");
         }, GENERATION_TIMEOUT_MS);
+
+        child.stdin.on("error", () => {
+            // Lua may exit early after rejecting malformed JSON.
+        });
+        child.stdin.end(requestBody);
 
         child.stdout.on("data", (chunk) => {
             stdoutBytes += chunk.length;
@@ -188,32 +171,30 @@ function runLuaGenerator(settings) {
             clearTimeout(timeout);
 
             if (timedOut) {
-                reject(new HttpError(504, "generation_timeout", "Map generation took too long."));
+                reject(Object.assign(new Error("Map generation took too long."), { status: 504, code: "generation_timeout" }));
                 return;
             }
             if (outputTooLarge) {
-                reject(new Error("Lua generator output exceeded the response limit."));
+                reject(new Error("Lua response exceeded the response limit."));
                 return;
             }
             if (launchError) {
                 reject(new Error("Could not start the Lua interpreter.", { cause: launchError }));
                 return;
             }
-            if (exitCode !== 0) {
-                const details = Buffer.concat(stderrChunks).toString("utf8").trim();
-                reject(new Error(details || `Lua generator exited with code ${exitCode}.`));
+
+            const body = Buffer.concat(stdoutChunks, stdoutBytes).toString("utf8");
+            if (exitCode === 0) {
+                resolve({ status: 200, body });
+                return;
+            }
+            if ((exitCode === 2 || exitCode === 3) && body.trim() !== "") {
+                resolve({ status: exitCode === 3 ? 422 : 400, body });
                 return;
             }
 
-            try {
-                const grid = JSON.parse(Buffer.concat(stdoutChunks, stdoutBytes).toString("utf8"));
-                if (!isGrid(grid, settings.grid_width, settings.grid_height)) {
-                    throw new Error("Lua generator returned a grid with an unexpected shape.");
-                }
-                resolve(grid);
-            } catch (error) {
-                reject(new Error("Lua generator did not return valid grid JSON.", { cause: error }));
-            }
+            const details = Buffer.concat(stderrChunks).toString("utf8").trim();
+            reject(new Error(details || `Lua generator exited with code ${exitCode}.`));
         });
     });
 }
@@ -242,17 +223,24 @@ async function handleRequest(request, response) {
             return;
         }
 
-        if (url.pathname !== "/generate") {
+        if (url.pathname !== "/api/v1/generate") {
             sendJson(response, 404, { error: "not_found" });
             return;
         }
 
-        if (request.method !== "GET") {
-            sendJson(response, 405, { error: "method_not_allowed" }, { Allow: "GET, OPTIONS" });
+        if (request.method !== "POST") {
+            sendJson(response, 405, { error: "method_not_allowed" }, { Allow: "POST, OPTIONS" });
+            return;
+        }
+        if (url.search) {
+            sendJson(response, 400, {
+                error: "query_not_allowed",
+                message: "Send generation settings in the JSON body.",
+            });
             return;
         }
 
-        const settings = parseSettings(url.searchParams);
+        const requestBody = await readRequestBody(request);
         if (activeGenerations >= MAX_CONCURRENT_GENERATIONS) {
             sendJson(
                 response,
@@ -264,16 +252,16 @@ async function handleRequest(request, response) {
         }
 
         activeGenerations += 1;
-        let grid;
+        let result;
         try {
-            grid = await runLuaGenerator(settings);
+            result = await runLuaGenerator(requestBody);
         } finally {
             activeGenerations -= 1;
         }
 
-        sendJson(response, 200, { ...settings, grid });
+        sendJsonText(response, result.status, result.body);
     } catch (error) {
-        if (error instanceof HttpError) {
+        if (Number.isInteger(error.status) && typeof error.code === "string") {
             sendJson(response, error.status, { error: error.code, message: error.message });
             return;
         }

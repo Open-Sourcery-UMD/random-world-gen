@@ -1,3 +1,5 @@
+local json = require("dkjson")
+
 local function find_max_bounds(x, y, dx, dy, width, height, max_length)
     local length = 0
 
@@ -70,35 +72,123 @@ local function rand_walk_generate(width, height, max_tunnels, max_length)
     return dungeon
 end
 
-local function read_integer_argument(index, name, default_value, minimum, maximum)
-    local raw_value = arg[index]
-    local value = raw_value == nil and default_value or tonumber(raw_value)
+local function write_request_error(status, code, message)
+    io.write(json.encode({ error = code, message = message }), "\n")
+    io.stdout:flush()
+    os.exit(status == 422 and 3 or 2)
+end
 
-    if value == nil or value % 1 ~= 0 or value < minimum or value > maximum then
-        error(name .. " must be a whole number between " .. minimum .. " and " .. maximum, 0)
+local function is_json_object(value)
+    if type(value) ~= "table" then
+        return false
+    end
+
+    local metatable = getmetatable(value)
+    return metatable ~= nil and metatable.__jsontype == "object"
+end
+
+local request_body = io.read("*a")
+local decoded, payload, next_position, decode_error = pcall(json.decode, request_body, 1, json.null)
+
+if not decoded or decode_error ~= nil then
+    write_request_error(400, "invalid_json", "The request body is not valid JSON.")
+end
+
+if next_position == nil or request_body:sub(next_position):match("%S") then
+    write_request_error(400, "invalid_json", "The request body must contain one JSON value.")
+end
+
+if not is_json_object(payload) then
+    write_request_error(400, "invalid_request", "The JSON body must be an object.")
+end
+
+local allowed_request_fields = {
+    algorithm = true,
+    seed = true,
+    settings = true,
+}
+
+for name in pairs(payload) do
+    if not allowed_request_fields[name] then
+        write_request_error(400, "unknown_field", "Unknown request field: " .. tostring(name) .. ".")
+    end
+end
+
+if type(payload.algorithm) ~= "string" then
+    write_request_error(400, "invalid_algorithm", "algorithm must be a string.")
+end
+
+if payload.algorithm ~= "random_walk" then
+    write_request_error(422, "unsupported_algorithm", "Unsupported algorithm: " .. payload.algorithm .. ".")
+end
+
+local settings = payload.settings
+if settings == nil then
+    settings = {}
+elseif not is_json_object(settings) then
+    write_request_error(400, "invalid_settings", "settings must be a JSON object.")
+end
+
+local parameter_limits = {
+    grid_width = { default_value = 50, minimum = 2, maximum = 200 },
+    grid_height = { default_value = 30, minimum = 2, maximum = 200 },
+    max_tunnels = { default_value = 80, minimum = 1, maximum = 500 },
+    max_tunnel_length = { default_value = 20, minimum = 1, maximum = 200 },
+}
+
+for name in pairs(settings) do
+    if parameter_limits[name] == nil then
+        write_request_error(400, "unknown_setting", "Unknown random_walk setting: " .. tostring(name) .. ".")
+    end
+end
+
+local function read_setting(name, limits)
+    local value = settings[name]
+    if value == nil then
+        value = limits.default_value
+    end
+
+    if type(value) ~= "number" or value % 1 ~= 0
+        or value < limits.minimum or value > limits.maximum then
+        write_request_error(
+            400,
+            "invalid_setting",
+            name .. " must be an integer between " .. limits.minimum .. " and " .. limits.maximum .. "."
+        )
     end
 
     return value
 end
 
-local width = read_integer_argument(1, "grid_width", 50, 2, 200)
-local height = read_integer_argument(2, "grid_height", 30, 2, 200)
-local max_tunnels = read_integer_argument(3, "max_tunnels", 80, 1, 500)
-local max_tunnel_length = read_integer_argument(4, "max_tunnel_length", 20, 1, 200)
-local seed = read_integer_argument(5, "seed", os.time() % 2147483648, 0, 2147483647)
+local width = read_setting("grid_width", parameter_limits.grid_width)
+local height = read_setting("grid_height", parameter_limits.grid_height)
+local max_tunnels = read_setting("max_tunnels", parameter_limits.max_tunnels)
+local max_tunnel_length = read_setting("max_tunnel_length", parameter_limits.max_tunnel_length)
+
+if width * height > 40000 then
+    write_request_error(400, "invalid_setting", "The grid may contain at most 40,000 cells.")
+end
+
+local fallback_seed = tonumber(arg[1]) or (os.time() % 2147483648)
+local seed = payload.seed
+if seed == nil then
+    seed = fallback_seed
+elseif type(seed) ~= "number" or seed % 1 ~= 0 or seed < 0 or seed > 2147483647 then
+    write_request_error(400, "invalid_seed", "seed must be an integer between 0 and 2147483647.")
+end
 
 math.randomseed(seed)
 
 local dungeon = rand_walk_generate(width, height, max_tunnels, max_tunnel_length)
-local encoded_rows = {}
+local response = {
+    algorithm = payload.algorithm,
+    seed = seed,
+    map = {
+        width = width,
+        height = height,
+        cells = dungeon,
+    },
+}
 
-for row = 1, #dungeon do
-    local encoded_cells = {}
-    for column = 1, #dungeon[row] do
-        encoded_cells[column] = tostring(dungeon[row][column])
-    end
-    encoded_rows[row] = "[" .. table.concat(encoded_cells, ",") .. "]"
-end
-
-io.write("[" .. table.concat(encoded_rows, ",") .. "]\n")
+io.write(json.encode(response), "\n")
 
