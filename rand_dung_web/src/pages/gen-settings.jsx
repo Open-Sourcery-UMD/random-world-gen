@@ -60,7 +60,7 @@ function getRandomWalkSettingsValues(data = {}) {
 
 function parseRandomWalkSettings(values) {
     return Object.fromEntries(
-        Object.keys(RANDOM_WALK_SETTING_MINIMUMS).map((key) => [key, Number(values[key])]),
+        Object.keys(RANDOM_WALK_SETTING_LIMITS).map((key) => [key, Number(values[key])]),
     );
 }
 
