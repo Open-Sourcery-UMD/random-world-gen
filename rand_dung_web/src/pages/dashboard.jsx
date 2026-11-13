@@ -70,10 +70,10 @@ export function Dashboard() {
             </div>
         );
 
-        return (
+        return (//TODO: differentiate between shared projects and owned projects
             <div className="w-full flex justify-center flex-wrap gap-10 p-10">
                 {projects.docs.map((project) => (
-                    <Project key={project.id} name={project.data().title} 
+                    <Project key={project.id} id={project.id} name={project.data().title} 
                     description={project.data().description} 
                     onDelete={async () => await deleteProject(project.id)}
                     onShare={async () => await shareProject(project.id)}/>

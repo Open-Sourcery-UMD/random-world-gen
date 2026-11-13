@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { auth, db } from "@/App.jsx";
 import { useNavigate } from "react-router-dom";
-import { doc, writeBatch } from "firebase/firestore"; 
+import { doc, writeBatch, getDoc } from "firebase/firestore"; 
 
 export function CreateProject() {
     let [projectName, setProjectName] = useState("new-project");
@@ -18,9 +18,22 @@ export function CreateProject() {
         return regex.test(name);
     }
 
+    async function validateDupliates(name) {
+        const uid = auth.currentUser.uid;
+        const projectId = name + "" + uid;
+
+        const projectRef = await getDoc(doc(db, `/users/${uid}/projects/${projectId}`));
+        return !projectRef.exists();
+    }
+
     function createNewProject() {
         if (!validate(projectName)) {
             alert("Invalid project name. Please use only letters, numbers, and dashes.");
+            return;
+        }
+
+        if(!validateDupliates(projectName)) {
+            alert("Project name already exists. Please choose a different name.");
             return;
         }
 
@@ -34,14 +47,15 @@ export function CreateProject() {
 
     function uploadNewProject(name, description) {
         const uid = auth.currentUser.uid;
-        const docRef1 = doc(db, `users/${uid}/projects/${name}`);
-        const docRef2 = doc(db, `projects/${name}`);
+        const projectId = name + "" + uid; //TODO: temporary hash (name + uid)
+        const docRef1 = doc(db, `users/${uid}/projects/${projectId}`);
+        const docRef2 = doc(db, `projects/${projectId}`);
 
         setProjectStatus("creating");
         
         const batch = writeBatch(db);
         batch.set(docRef1, {
-            "project-id": name, //later we can hash the name into an actual project-id to make it more secure
+            "project-id": projectId, //TODO: temporary hash (name + uid)
         }).set(docRef2, {
             title: name,
             description: description,

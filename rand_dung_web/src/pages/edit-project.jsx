@@ -215,7 +215,7 @@ function GenerationTypeCard({ projectLoaded, projectGenerationType, onTypeChange
     );
 }
 
-function EditProjectCard({ projectName }) {
+function EditProjectCard({ projectId }) {
     const [projectState, setProjectState] = useState({ status: "loading" });
     const [selectedGenerationType, setSelectedGenerationType] = useState(null);
     const [isSavingGenerationType, setIsSavingGenerationType] = useState(false);
@@ -230,8 +230,8 @@ function EditProjectCard({ projectName }) {
             const uid = auth.currentUser?.uid;
             if (!uid) return false;
 
-            const projectRef = doc(db, `projects/${projectName}`); //not secure right now
-            const settingsRef = doc(db, `projects/${projectName}/gen-settings/settings`);
+            const projectRef = doc(db, `projects/${projectId}`);
+            const settingsRef = doc(db, `projects/${projectId}/gen-settings/settings`);
             const batch = writeBatch(db);
             batch.delete(settingsRef);
             batch.update(projectRef, {
@@ -255,7 +255,7 @@ function EditProjectCard({ projectName }) {
             if (!uid) return;
 
             try {
-                const projectSnapshot = await getDoc(doc(db, `projects/${projectName}`));
+                const projectSnapshot = await getDoc(doc(db, `projects/${projectId}`));
                 if (active) {
                     setProjectState(projectSnapshot.exists()
                         ? { status: "found", project: projectSnapshot.data() }
@@ -270,7 +270,7 @@ function EditProjectCard({ projectName }) {
         return () => {
             active = false;
         };
-    }, [projectName]);
+    }, [projectId]);
 
     if (projectState.status === "not-found") {
         return <Navigate to="/dashboard" replace />;
@@ -282,7 +282,7 @@ function EditProjectCard({ projectName }) {
         : projectState.status === "error"
             ? "Unable to load this project. Please try again."
             : project.description;
-    const title = project?.title ?? projectName;
+    const title = project?.title ?? projectId;
 
     return (
         <div className="w-full flex flex-col items-center gap-6 p-10">
@@ -310,11 +310,11 @@ function EditProjectCard({ projectName }) {
 
                             try {
                                 const uid = auth.currentUser.uid;
-                                await updateDoc(doc(db, `projects/${projectName}`), {
+                                await updateDoc(doc(db, `projects/${projectId}`), {
                                     "gen-type": selectedGenerationType.label,
                                 });
 
-                                const search = new URLSearchParams({ project: projectName });
+                                const search = new URLSearchParams({ project: projectId });
                                 navigate(`/gen-settings?${search.toString()}`, {
                                     state: { generationTypeId: selectedGenerationType.id },
                                 });
@@ -337,15 +337,15 @@ function EditProjectCard({ projectName }) {
 
 export function EditProject({ user, authLoading }) {
     const [searchParams] = useSearchParams();
-    const projectName = searchParams.get("project");
+    const projectId = searchParams.get("project");
 
-    if (!projectName?.trim()) {
+    if (!projectId?.trim()) {
         return <Navigate to="/dashboard" replace />;
     }
 
     return (
         <RequireVerifiedUser user={user} authLoading={authLoading}>
-            <EditProjectCard projectName={projectName} />
+            <EditProjectCard projectId={projectId} />
         </RequireVerifiedUser>
     );
 }

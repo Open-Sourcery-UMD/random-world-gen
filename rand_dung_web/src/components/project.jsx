@@ -2,7 +2,7 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 
-export function Project({ name, description, onDelete, onShare}) {
+export function Project({ id, name, description, onDelete, onShare}) {
     const navigate = useNavigate();
 
     return (
@@ -16,7 +16,7 @@ export function Project({ name, description, onDelete, onShare}) {
             </CardHeader>
             <div className="flex h-full flex-col items-center justify-end gap-5 mt-5">
                 <Button className="w-3/4" onClick={() => {
-                    const search = new URLSearchParams({ project: name });
+                    const search = new URLSearchParams({ project: id });
                     navigate(`/edit?${search.toString()}`);
                 }}>Edit</Button>
                 <Button className="w-3/4" onClick={() => {onDelete()}}>
