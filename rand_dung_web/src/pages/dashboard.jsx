@@ -1,5 +1,6 @@
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Project } from "@/components/project";
+import { SharedProject } from "@/components/shared-project";
 import { getDocs, collection, doc, getDoc, where, query, writeBatch } from "firebase/firestore"; 
 import { useState, useEffect } from "react";
 import { db, auth } from "@/App.jsx";
@@ -70,14 +71,18 @@ export function Dashboard() {
             </div>
         );
 
-        return (//TODO: differentiate between shared projects and owned projects
+        return (
             <div className="w-full flex justify-center flex-wrap gap-10 p-10">
-                {projects.docs.map((project) => (
-                    <Project key={project.id} id={project.id} name={project.data().title} 
+                {projects.docs.map((project) => {
+                    if(project.data()["allowed-users"][0] == auth.currentUser.uid) {
+                        <SharedProject key={project.id} id={project.id} name={project.data().title} 
+                        description={project.data().description}/>
+                    }
+                    return <Project key={project.id} id={project.id} name={project.data().title} 
                     description={project.data().description} 
                     onDelete={async () => await deleteProject(project.id)}
-                    onShare={async () => await shareProject(project.id)}/>
-                ))}
+                    onShare={async () => await shareProject(project.id)}/>;
+                })}
             </div>
         );
     }

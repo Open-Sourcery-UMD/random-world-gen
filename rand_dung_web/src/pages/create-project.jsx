@@ -26,7 +26,7 @@ export function CreateProject() {
         return !projectRef.exists();
     }
 
-    function createNewProject() {
+    function createNewProject() {//TODO: eventually, another text element below the input should show whether there are any errors with the input, rather than using an alert
         if (!validate(projectName)) {
             alert("Invalid project name. Please use only letters, numbers, and dashes.");
             return;
@@ -47,7 +47,7 @@ export function CreateProject() {
 
     function uploadNewProject(name, description) {
         const uid = auth.currentUser.uid;
-        const projectId = name + "" + uid; //TODO: temporary hash (name + uid)
+        const projectId = name + "" + uid; //temporary hash (name + uid)
         const docRef1 = doc(db, `users/${uid}/projects/${projectId}`);
         const docRef2 = doc(db, `projects/${projectId}`);
 
@@ -55,7 +55,7 @@ export function CreateProject() {
         
         const batch = writeBatch(db);
         batch.set(docRef1, {
-            "project-id": projectId, //TODO: temporary hash (name + uid)
+            "project-id": projectId, //temporary hash (name + uid)
         }).set(docRef2, {
             title: name,
             description: description,
