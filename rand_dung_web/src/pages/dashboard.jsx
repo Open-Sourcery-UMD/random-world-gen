@@ -1,11 +1,12 @@
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Project } from "@/components/project";
 import { SharedProject } from "@/components/shared-project";
-import { getDocs, collection, doc, getDoc, where, query, writeBatch } from "firebase/firestore"; 
+import { getDocs, collection, doc, getDoc, where, query, writeBatch, arrayRemove, arrayUnion, or } from "firebase/firestore"; 
 import { useState, useEffect } from "react";
 import { db, auth } from "@/App.jsx";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { ProjectInvite } from "@/components/project-invite";
 
 export function Dashboard() {
     const [projects, setProjects] = useState(null);
@@ -16,7 +17,10 @@ export function Dashboard() {
 
         const projectsQuery = query(
             collection(db, "projects"),
-            where("allowed-users", "array-contains", auth.currentUser.uid)
+            or(
+                where("allowed-users", "array-contains", auth.currentUser.uid),
+                where("invited-users", "array-contains", auth.currentUser.email)
+            )
         );
 
         const querySnapshot = await getDocs(projectsQuery);
@@ -42,13 +46,29 @@ export function Dashboard() {
         batch.delete(doc(db, `projects/${projectId}/gen-settings/settings`))
         .delete(doc(db, `projects/${projectId}`)); //delete the project doc
 
-        batch.commit().then(() => {
+        await batch.commit().then(() => {
             fetchProjects();
         });
     }
 
-    async function shareProject(projectId) {
+    function shareProject(projectId) {
+    }
 
+    async function handleInvite(projectId, accepted) {
+        const uid = auth.currentUser.uid;
+
+        const batch = writeBatch(db);
+        batch.update(doc(db, `projects/${projectId}`), {
+            "invited-users": arrayRemove(auth.currentUser.email)
+        });
+        if(accepted) {
+            batch.update(doc(db, `projects/${projectId}`), {
+                "allowed-users": arrayUnion(uid)
+            });
+        }
+        await batch.commit().then(() => {
+            fetchProjects();
+        });
     }
 
     function getProjects() {
@@ -74,14 +94,20 @@ export function Dashboard() {
         return (
             <div className="w-full flex justify-center flex-wrap gap-10 p-10">
                 {projects.docs.map((project) => {
-                    if(project.data()["allowed-users"][0] == auth.currentUser.uid) {
-                        <SharedProject key={project.id} id={project.id} name={project.data().title} 
+                    if(project.data()["allowed-users"][0] != auth.currentUser.uid) {
+                        return <SharedProject key={project.id} id={project.id} name={project.data().title} 
                         description={project.data().description}/>
+                    }
+                    else if(project.data()["invited-users"].includes(auth.currentUser.email)) {
+                        return <ProjectInvite key={project.id} id={project.id} name={project.data().title} 
+                        description={project.data().description} 
+                        onAccept={async () => await handleInvite(project.id, true)}
+                        onDecline={async () => await handleInvite(project.id, false)}/>
                     }
                     return <Project key={project.id} id={project.id} name={project.data().title} 
                     description={project.data().description} 
                     onDelete={async () => await deleteProject(project.id)}
-                    onShare={async () => await shareProject(project.id)}/>;
+                    onShare={async () => shareProject(project.id)}/>;
                 })}
             </div>
         );

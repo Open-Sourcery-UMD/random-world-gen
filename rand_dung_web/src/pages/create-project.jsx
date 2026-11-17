@@ -61,6 +61,7 @@ export function CreateProject() {
             description: description,
             "gen-type": "none",
             "allowed-users": [uid],
+            "invited-users": [],
         }).commit().then(() => {
             navigate("/dashboard");
         });
