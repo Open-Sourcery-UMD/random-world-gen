@@ -11,9 +11,9 @@ export function ProjectInvite({ id, name, description, onAccept, onDecline }) {
                 <CardTitle>{name}</CardTitle>
                 <CardDescription>{description}</CardDescription>
             </CardHeader>
-            <div className="flex h-full flex-col items-center justify-end gap-5 mt-5">
+            <div className="flex h-full flex-col items-center justify-end gap-4 mt-5">
                 <Button className="w-3/4" onClick={() => {onAccept()}}>Accept</Button>
-                <Button className="w-3/4" onClick={() => {onDecline()}}>Decline</Button>
+                <Button variant="destructive" className="w-3/4" onClick={() => {onDecline()}}>Decline</Button>
             </div>
         </Card>
     );

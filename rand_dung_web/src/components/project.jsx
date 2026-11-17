@@ -14,12 +14,12 @@ export function Project({ id, name, description, onDelete, onShare}) {
                 </div>
                 <Button onClick={() => {onShare()}}>Share</Button>
             </CardHeader>
-            <div className="flex h-full flex-col items-center justify-end gap-5 mt-5">
+            <div className="flex h-full flex-col items-center justify-end gap-4 mt-5">
                 <Button className="w-3/4" onClick={() => {
                     const search = new URLSearchParams({ project: id });
                     navigate(`/edit?${search.toString()}`);
                 }}>Edit</Button>
-                <Button className="w-3/4" onClick={() => {onDelete()}}>
+                <Button variant="destructive" className="w-3/4" onClick={() => {onDelete()}}>
                     Delete
                 </Button>
             </div>

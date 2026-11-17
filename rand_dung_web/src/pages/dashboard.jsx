@@ -7,9 +7,14 @@ import { db, auth } from "@/App.jsx";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { ProjectInvite } from "@/components/project-invite";
+import { ShareModal } from "@/components/share-modal";
 
 export function Dashboard() {
     const [projects, setProjects] = useState(null);
+    const [shareModalOpen, setShareModalOpen] = useState(false);
+    const [shareProjectId, setShareProjectId] = useState(null);
+    const [shareProjectName, setShareProjectName] = useState(null);
+
     const navigate = useNavigate();
 
     const fetchProjects = async () => {
@@ -51,11 +56,23 @@ export function Dashboard() {
         });
     }
 
-    function shareProject(projectId) {
+    function shareProject(projectId, projectName) {
+        setShareProjectId(projectId);
+        setShareProjectName(projectName);
+        setShareModalOpen(true);
     }
 
     async function handleInvite(projectId, accepted) {
         const uid = auth.currentUser.uid;
+
+        if(accepted) {
+            const projectDoc = await getDoc(doc(db, `projects/${projectId}`));
+            if(projectDoc.data()["invited-users"].includes(auth.currentUser.email) == false) {
+                alert("You are not invited to this project.");
+                fetchProjects();
+                return;
+            }
+        }
 
         const batch = writeBatch(db);
         batch.update(doc(db, `projects/${projectId}`), {
@@ -69,6 +86,14 @@ export function Dashboard() {
         await batch.commit().then(() => {
             fetchProjects();
         });
+    }
+
+    async function sendInvite(projectId, email) {
+        const batch = writeBatch(db);
+        batch.update(doc(db, `projects/${projectId}`), {
+            "invited-users": arrayUnion(email)
+        });
+        await batch.commit();
     }
 
     function getProjects() {
@@ -94,20 +119,20 @@ export function Dashboard() {
         return (
             <div className="w-full flex justify-center flex-wrap gap-10 p-10">
                 {projects.docs.map((project) => {
-                    if(project.data()["allowed-users"][0] != auth.currentUser.uid) {
-                        return <SharedProject key={project.id} id={project.id} name={project.data().title} 
-                        description={project.data().description}/>
-                    }
-                    else if(project.data()["invited-users"].includes(auth.currentUser.email)) {
+                    if(project.data()["invited-users"].includes(auth.currentUser.email)) {
                         return <ProjectInvite key={project.id} id={project.id} name={project.data().title} 
                         description={project.data().description} 
                         onAccept={async () => await handleInvite(project.id, true)}
                         onDecline={async () => await handleInvite(project.id, false)}/>
                     }
+                    else if(project.data()["allowed-users"][0] != auth.currentUser.uid) {
+                        return <SharedProject key={project.id} id={project.id} name={project.data().title} 
+                        description={project.data().description} fetchProjects={fetchProjects}/>
+                    }
                     return <Project key={project.id} id={project.id} name={project.data().title} 
                     description={project.data().description} 
                     onDelete={async () => await deleteProject(project.id)}
-                    onShare={async () => shareProject(project.id)}/>;
+                    onShare={async () => shareProject(project.id, project.data().title)}/>;
                 })}
             </div>
         );
@@ -137,6 +162,13 @@ export function Dashboard() {
 
                 {getProjects()}
             </Card>
+            <ShareModal isOpen={shareModalOpen} 
+            onClose={() => setShareModalOpen(false)} 
+            projectId={shareProjectId}
+            projectName={shareProjectName}
+            sendInvite={sendInvite}>
+            
+            </ShareModal>
         </div>
     );
 }
