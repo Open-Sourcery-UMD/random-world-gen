@@ -97,7 +97,7 @@ function isValidRandomWalkResponse(data, expectedSettings) {
         && row.every((cell) => cell === 0 || cell === 1));
 }
 
-function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
+function GenerationSettingsContent({ projectId, selectedGenerationTypeId }) {
     const [projectState, setProjectState] = useState({ status: "loading" });
     const [generationState, setGenerationState] = useState({ status: "loading" });
     const [randomWalkSettings, setRandomWalkSettings] = useState(EMPTY_RANDOM_WALK_SETTINGS);
@@ -116,7 +116,7 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
             }
 
             try {
-                const projectSnapshot = await getDoc(doc(db, `users/${uid}/projects/${projectName}`));
+                const projectSnapshot = await getDoc(doc(db, `projects/${projectId}`));
                 if (active) {
                     setProjectState(projectSnapshot.exists()
                         ? { status: "found", project: projectSnapshot.data() }
@@ -131,7 +131,7 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
         return () => {
             active = false;
         };
-    }, [projectName]);
+    }, [projectId]);
 
     useEffect(() => {
         if (projectState.status !== "found") return undefined;
@@ -189,7 +189,7 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
                 if (!uid) throw new Error("No signed-in user");
 
                 const settingsSnapshot = await getDoc(
-                    doc(db, `users/${uid}/projects/${projectName}/gen-settings/settings`),
+                    doc(db, `projects/${projectId}/gen-settings/settings`),
                 );
                 const settings = settingsSnapshot.exists() ? settingsSnapshot.data() : {};
 
@@ -207,7 +207,7 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
         return () => {
             active = false;
         };
-    }, [generationState, projectName]);
+    }, [generationState, projectId]);
 
     const randomWalkSettingsValid = isValidRandomWalkSettings(randomWalkSettings);
     const algorithmTestLoading = algorithmTestState.status === "loading";
@@ -221,7 +221,7 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
             if (!uid) throw new Error("No signed-in user");
 
             await setDoc(
-                doc(db, `users/${uid}/projects/${projectName}/gen-settings/settings`),
+                doc(db, `projects/${projectId}/gen-settings/settings`),
                 parseRandomWalkSettings(randomWalkSettings),
                 { merge: true },
             );
@@ -300,7 +300,7 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
     }
 
     const project = projectState.project;
-    const projectTitle = project?.title ?? projectName;
+    const projectTitle = project?.title ?? projectId;
     const projectDescription = projectState.status === "loading"
         ? "Loading project…"
         : projectState.status === "error"
@@ -340,7 +340,7 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
                         <>
                             <SettingsComponent
                                 generationType={generationType}
-                                projectName={projectName}
+                                projectId={projectId}
                                 values={randomWalkSettings}
                                 onChange={(values) => {
                                     setRandomWalkSettings(values);
@@ -475,17 +475,17 @@ function GenerationSettingsContent({ projectName, selectedGenerationTypeId }) {
 export function GenerationSettings({ user, authLoading }) {
     const [searchParams] = useSearchParams();
     const location = useLocation();
-    const projectName = searchParams.get("project");
+    const projectId = searchParams.get("project");
     const selectedGenerationTypeId = location.state?.generationTypeId;
 
-    if (!projectName?.trim()) {
+    if (!projectId?.trim()) {
         return <Navigate to="/dashboard" replace />;
     }
 
     return (
         <RequireVerifiedUser user={user} authLoading={authLoading}>
             <GenerationSettingsContent
-                projectName={projectName}
+                projectId={projectId}
                 selectedGenerationTypeId={selectedGenerationTypeId}
             />
         </RequireVerifiedUser>

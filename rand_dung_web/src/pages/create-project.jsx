@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { auth, db } from "@/App.jsx";
 import { useNavigate } from "react-router-dom";
-import { doc, setDoc } from "firebase/firestore"; 
+import { doc, writeBatch, getDoc } from "firebase/firestore"; 
 
 export function CreateProject() {
     let [projectName, setProjectName] = useState("new-project");
@@ -18,9 +18,22 @@ export function CreateProject() {
         return regex.test(name);
     }
 
-    function createNewProject() {
+    async function validateDupliates(name) {
+        const uid = auth.currentUser.uid;
+        const projectId = name + "" + uid;
+
+        const projectRef = await getDoc(doc(db, `/users/${uid}/projects/${projectId}`));
+        return !projectRef.exists();
+    }
+
+    function createNewProject() {//TODO: eventually, another text element below the input should show whether there are any errors with the input, rather than using an alert
         if (!validate(projectName)) {
             alert("Invalid project name. Please use only letters, numbers, and dashes.");
+            return;
+        }
+
+        if(!validateDupliates(projectName)) {
+            alert("Project name already exists. Please choose a different name.");
             return;
         }
 
@@ -34,18 +47,24 @@ export function CreateProject() {
 
     function uploadNewProject(name, description) {
         const uid = auth.currentUser.uid;
-        const docRef = doc(db, `users/${uid}/projects/${name}`);
+        const projectId = name + "" + uid; //temporary hash (name + uid)
+        const docRef1 = doc(db, `users/${uid}/projects/${projectId}`);
+        const docRef2 = doc(db, `projects/${projectId}`);
 
         setProjectStatus("creating");
-
-        setDoc(docRef, {
+        
+        const batch = writeBatch(db);
+        batch.set(docRef1, {
+            "project-id": projectId, //temporary hash (name + uid)
+        }).set(docRef2, {
             title: name,
             description: description,
             "gen-type": "none",
-        }).then(() => {
+            "allowed-users": [uid],
+            "invited-users": [],
+        }).commit().then(() => {
             navigate("/dashboard");
-        })
-        
+        });
     }
         
 
